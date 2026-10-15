@@ -24,6 +24,15 @@ export type Attempt = {
   violations: Violation[]
   speech: SpeechIssue[]
   sent_back?: string | null  // passed the rules, but wasn't useful advice, so the AI was asked again
+  understood?: Understood | null  // the AI's own reading of the request, which the checks hold it to
+}
+
+export type Understood = {
+  kind: 'new' | 'change' | 'alternative' | 'question' | 'other'
+  amount: number | null
+  products: string[]
+  only: boolean
+  exclude?: string[]
 }
 
 export type Scope = { verified: string; pattern_checked: string; not_checked: string[] }

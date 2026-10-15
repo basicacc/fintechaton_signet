@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { advise, api, DISCLOSURES, fmt, getSession, signIn, type AdviceResult, type Attempt, type ClientView, type CompareRow, type Note, type Question, type Receipt } from '../api'
+import { advise, api, DISCLOSURES, fmt, getSession, signIn, type AdviceResult, type Attempt, type ClientView, type CompareRow, type Note, type Question, type Receipt, type Understood } from '../api'
 import { LEVEL_NAME, rule } from '../plain'
 import { Highlight, Icon, navigate, ProductRow, ScopeBlock, useApp } from '../ui'
 
@@ -585,6 +585,7 @@ function TurnStory({ t, busy, flow, clientName }: { t: Turn; busy: boolean; flow
       <div className="stage" style={{ padding: '16px 24px' }}>
         <span className="small faint">{clientName} asked</span>
         <p style={{ fontSize: 17, marginTop: 4 }}>“{t.request}”</p>
+        <UnderstoodLine u={attempts?.find(a => a.understood)?.understood} />
       </div>
 
       {integ && (integ.capped || integ.reported_change) && (
@@ -617,6 +618,22 @@ function TurnStory({ t, busy, flow, clientName }: { t: Turn; busy: boolean; flow
       )}
     </div>
   )
+}
+
+const KIND_TEXT: Record<Understood['kind'], string> = {
+  new: 'wants a plan', change: 'wants the current plan changed', alternative: 'wants something different',
+  question: 'is asking a question', other: 'something else',
+}
+
+/** What the AI said it understood. Every draft is held to this: the amount, the products, "only". */
+function UnderstoodLine({ u }: { u?: Understood | null }) {
+  const { catalog } = useApp()
+  if (!u) return null
+  const parts = [KIND_TEXT[u.kind]]
+  if (u.amount) parts.push(`¥${u.amount.toLocaleString('en-US')}`)
+  if (u.products.length) parts.push((u.only ? 'only ' : '') + u.products.map(p => catalog[p]?.name ?? p).join(', '))
+  if (u.exclude?.length) parts.push('not ' + u.exclude.map(p => catalog[p]?.name ?? p).join(', '))
+  return <p className="small muted" style={{ marginTop: 8 }}>The AI understood: {parts.join(' · ')}. Every draft is checked against this.</p>
 }
 
 function DraftStage({ a, n, r }: { a: Attempt; n: number; r?: AdviceResult }) {

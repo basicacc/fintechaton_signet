@@ -102,7 +102,7 @@ def violation_dict(v) -> dict:
 
 def attempt_dict(a: Attempt) -> dict:
     return {"source": a.source, "ok": a.ok, "purchases": a.purchases, "message": a.message, "error": a.error,
-            "sent_back": a.sent_back,
+            "sent_back": a.sent_back, "understood": a.understood,
             "violations": [violation_dict(v) for v in a.violations],
             "speech": [{"rule_id": s.rule_id, "citation": s.citation, "message": s.message, "excerpt": s.excerpt,
                         "product_id": s.product_id} for s in a.speech]}
@@ -641,7 +641,10 @@ class Service:
     def _history(self, client_id: str) -> list[dict]:
         """What the model may see of earlier turns: the client's words and *delivered* replies only."""
         return [{"client": t["request"], "advisor": t["result"]["final"]["message"],
-                 "plan": t["result"]["final"]["purchases"]}
+                 "plan": t["result"]["final"]["purchases"],
+                 # which products the turn was about, so "put 50k in it" can be resolved next time
+                 "about": next((a["understood"]["products"] for a in t["result"].get("attempts", [])
+                                if a.get("understood")), [])}
                 for t in self.chats.get(client_id, []) if t["result"].get("final")]
 
     def _remember(self, client_id: str, request: str, out: dict) -> dict:

@@ -42,7 +42,7 @@ def test_stubborn_model_falls_back_to_solver():
                                              "you could lose part of your principal."}])
     assert res.final.source == "solver-fix" and res.final.ok
     assert "CN-FUND-TECH" not in res.final.purchases
-    assert sum(res.final.purchases.values()) == 150_000
+    assert sum(res.final.purchases.values()) == 200_000  # the 200k the client wrote, not the draft's 150k
 
 
 def test_guarantee_language_is_blocked():
@@ -60,7 +60,7 @@ def test_garbage_output_never_reaches_client():
 
 
 def test_hallucinated_product_ids_rejected():
-    res, _ = run([proposal({"CRYPTO-MOON": 50_000}), proposal({"CN-WM-FI90": 50_000})])
+    res, _ = run([proposal({"CRYPTO-MOON": 150_000}), proposal({"CN-WM-FI90": 50_000, "CN-WM-CASH": 100_000})])
     assert res.attempts[0].error and res.final.ok
 
 
@@ -295,3 +295,163 @@ def test_history_names_the_current_plan_with_risk_levels():
          {"client": "make it safer", "advisor": "c", "plan": {"CN-DEP-12M": 100_000}}]
     block = history_block(h, CAT)
     assert "current plan" in block and f"{CAT['CN-DEP-12M'].name} (R{CAT['CN-DEP-12M'].effective_risk})" in block
+
+
+# ------------------------------------------------ the model states what it understood; the code checks against it
+
+def understood(kind="new", amount=None, products=(), only=False) -> dict:
+    return {"kind": kind, "amount": amount, "products": list(products), "only": only}
+
+
+def with_u(reply: dict, **u) -> dict:
+    return {"understood": understood(**u), **reply}
+
+
+def test_only_this_product_means_nothing_else_is_added():
+    # the screenshot: "lets only do steady income 90 day" got Daily Cash added that nobody asked for
+    u = dict(kind="change", amount=100_000, products=["CN-WM-FI90"], only=True)
+    llm = ScriptedLLM([with_u(proposal({"CN-WM-CASH": 60_000, "CN-WM-FI90": 40_000}), **u),
+                       with_u(proposal({"CN-WM-FI90": 100_000}), **u)])
+    h = [{"client": "I have 100k", "advisor": "…", "plan": {"CN-DEP-12M": 100_000}}]
+    res = Advisor(llm, CAT, CN).recommend(client(level=2), "lets only do steady income 90 day", NOW, history=h)
+    assert "only Steady Income 90-Day" in res.attempts[0].sent_back
+    assert res.final.purchases == {"CN-WM-FI90": 100_000}
+
+
+def test_only_a_capped_product_gets_the_most_allowed_not_padding():
+    from pca.verifier import max_amount
+    from pca.models import Proposal
+    c = client(level=2)
+    cap = max_amount(c, CAT, Proposal(client_id=c.id, purchases={}, as_of=NOW), CN, "CN-WM-FI90")
+    want = cap + 100_000  # more than the rules allow in one R2 product
+    u = dict(kind="change", amount=want, products=["CN-WM-FI90"], only=True)
+    too_much = with_u(proposal({"CN-WM-FI90": want}), **u)
+    res = Advisor(ScriptedLLM([too_much] * 3 + [{"message": ""}]), CAT, CN).recommend(
+        c, "only steady income 90 day please", NOW)
+    assert set(res.final.purchases) == {"CN-WM-FI90"} and res.final.purchases["CN-WM-FI90"] <= cap
+    assert res.final.ok
+
+
+def test_products_come_from_the_models_reading_not_text_matching():
+    # "that steady 90 one" is no name or alias in the catalogue; the model picks the id from the enum
+    u = dict(kind="new", amount=50_000, products=["CN-WM-FI90"], only=False)
+    llm = ScriptedLLM([with_u(proposal({"CN-WM-CASH": 50_000}), **u),
+                       with_u(proposal({"CN-WM-FI90": 30_000, "CN-WM-CASH": 20_000}), **u)])
+    res = Advisor(llm, CAT, CN).recommend(client(level=2), "want some of that steady 90 one, 50k", NOW)
+    assert "leaves it out" in res.attempts[0].sent_back and res.final.purchases.get("CN-WM-FI90")
+
+
+def test_a_question_about_a_product_needs_no_plan():
+    u = dict(kind="question", amount=None, products=["CN-WM-FI90"], only=False)
+    reply = with_u({"purchases": [], "message": "Steady Income 90-Day is rated R2: low risk, but principal can "
+                                                "be lost."}, **u)
+    res, _ = run([reply], request="is steady income 90 day safe?")
+    assert res.first_pass_ok and res.final.purchases == {}
+
+
+def test_malformed_understanding_falls_back_to_patterns():
+    from pca.advisor import resolve_intent
+    c = client(level=2)
+    h = [{"client": "I have 200k", "advisor": "…", "plan": {"CN-DEP-12M": 200_000}}]
+    bad = {"kind": "whatever", "amount": "lots", "products": ["NOT-A-PRODUCT"], "only": True}
+    from pca.advisor import _understood
+    assert _understood(bad, CAT) is None
+    i = resolve_intent("lets only do steady income 90 day", h, None, CAT, c)
+    assert i.source == "patterns" and i.products == ["CN-WM-FI90"] and i.only and i.amount == 200_000
+
+
+def test_name_matching_ignores_hyphens_and_spaces():
+    from pca.advisor import intent_from_request
+    for text in ("steady income 90 day", "Steady-Income-90-Day", "steadyincome90day please"):
+        assert "CN-WM-FI90" in intent_from_request(text, CAT, client()), text
+
+
+def test_an_amount_the_client_wrote_beats_the_models_guess():
+    from pca.advisor import resolve_intent
+    h = [{"client": "I have 200k to invest for 3 years", "advisor": "…", "plan": {"CN-WM-CASH": 200_000}}]
+    guess = understood(kind="change", amount=500_000, products=["CN-WM-FI90"], only=True)  # its whole balance
+    assert resolve_intent("lets only do steady income 90 day", h, guess, CAT, client()).amount == 200_000
+    assert resolve_intent("make it 100k", h, guess, CAT, client()).amount == 100_000  # a new amount wins
+    assert resolve_intent("put everything in", [], understood(amount=300_000), CAT, client()).amount == 300_000
+
+
+def test_only_x_is_kept_even_if_the_model_swaps_products_after_a_rule_cut():
+    from pca.verifier import max_amount
+    from pca.models import Proposal
+    c = client(level=2)
+    cap = max_amount(c, CAT, Proposal(client_id=c.id, purchases={}, as_of=NOW), CN, "CN-WM-FI90")
+    u = dict(kind="change", amount=cap + 100_000, products=["CN-WM-FI90"], only=True)
+    swapped = with_u(proposal({"CN-DEP-12M": cap + 100_000}), **u)
+    llm = ScriptedLLM([with_u(proposal({"CN-WM-FI90": cap + 100_000}), **u), swapped, swapped, {"message": ""}])
+    res = Advisor(llm, CAT, CN).recommend(c, "put it only in steady income 90-day", NOW)
+    assert "keep only" in llm.calls[1][-1]["content"]  # the rule feedback says: lower it, don't switch
+    assert set(res.final.purchases) == {"CN-WM-FI90"} and res.final.ok
+
+
+def test_a_product_the_client_dropped_stays_out():
+    u = dict(kind="change", amount=200_000, products=[], only=False)
+    keep = {"understood": {**understood(**u), "exclude": ["CN-BOND-GOV"]}}
+    llm = ScriptedLLM([{**keep, **proposal({"CN-BOND-GOV": 60_000, "CN-WM-FI90": 60_000, "CN-WM-CASH": 80_000})},
+                       {**keep, **proposal({"CN-WM-FI90": 60_000, "CN-WM-CASH": 140_000})}])
+    h = [{"client": "invest 200k", "advisor": "…", "plan": {"CN-BOND-GOV": 60_000, "CN-WM-FI90": 60_000,
+                                                            "CN-WM-CASH": 80_000}}]
+    res = Advisor(llm, CAT, CN).recommend(client(level=2), "drop the government bond fund", NOW, history=h)
+    assert "don't want China Government Bond Index Fund" in res.attempts[0].sent_back
+    assert "CN-BOND-GOV" not in res.final.purchases and res.final.ok
+
+
+def test_a_question_never_turns_into_a_sale():
+    u = dict(kind="question", amount=None, products=["CN-BOND-GOV"], only=False)
+    sells = with_u(proposal({"CN-BOND-GOV": 100_000}), **u)
+    answer = with_u({"purchases": [], "message": "China Government Bond Index Fund is rated R2: low risk, but "
+                                                 "principal can be lost."}, **u)
+    res, _ = run([sells, answer], request="is the government bond fund safe?")
+    assert "asked a question" in res.attempts[0].sent_back and res.final.purchases == {}
+    # and if every draft fails, the solver doesn't invent a purchase either
+    bad = with_u({"purchases": [], "message": "It is guaranteed and risk-free."}, **u)
+    res, _ = run([bad, bad, bad, {"message": "China Government Bond Index Fund is rated R2. Principal can be lost."}],
+                 request="is the government bond fund safe?")
+    assert res.final.purchases == {} and res.final.ok
+
+
+def test_a_plan_far_below_the_written_amount_is_sent_back_once():
+    # the 9B reads 八十万 (800,000) as 80,000; the number is parsed exactly and the plan held to it
+    small = proposal({"CN-WM-CASH": 20_000, "CN-WM-FI90": 30_000, "CN-BOND-GOV": 30_000})
+    right = proposal({"CN-WM-CASH": 100_000, "CN-WM-FI90": 100_000, "CN-BOND-GOV": 100_000})
+    llm = ScriptedLLM([small, right])
+    res = Advisor(llm, CAT, CN).recommend(client(level=2), "invest 300k please", NOW)
+    assert "but the client wrote ¥300,000" in res.attempts[0].sent_back
+    assert sum(res.final.purchases.values()) == 300_000
+    assert "Amount the client wrote: ¥300,000" in llm.calls[0][-1]["content"]
+
+
+def test_history_says_what_a_question_turn_was_about():
+    from pca.advisor import history_block
+    h = [{"client": "is the government bond fund safe?", "advisor": "It is rated R2…", "plan": {},
+          "about": ["CN-BOND-GOV"]}]
+    assert "This turn was about: China Government Bond Index Fund" in history_block(h, CAT)
+
+
+def test_a_failed_answer_to_a_question_falls_back_to_facts_not_false_refusals():
+    from pca.advisor import question_message
+    u = dict(kind="question", amount=None, products=["CN-BOND-GOV"], only=False)
+    bad = with_u({"purchases": [], "message": "It is guaranteed and risk-free."}, **u)
+    res, llm = run([bad, bad, bad, {"message": "Totally risk-free!"}], request="is the government bond fund safe?")
+    msg = res.final.message
+    assert res.final.ok and res.final.purchases == {}
+    assert "doesn't meet the rules" not in msg and "fits your risk level (C2)" in msg and "R2" in msg
+    assert "answer it, keep purchases empty" in llm.calls[1][-1]["content"]
+    zh = question_message(["CN-BOND-GOV"], CAT, 2, "zh", {"CN-BOND-GOV": True})
+    assert "符合您的风险等级（C2）" in zh and "本金可能亏损" in zh
+    for m in (msg, zh):
+        assert not check_message(m, CAT, {"CN-BOND-GOV"}, 2)
+
+
+def test_listing_the_products_a_question_asks_about_is_not_a_recommendation():
+    r1 = ["CN-DEP-01", "CN-DEP-12M", "CN-WM-CASH"]
+    u = dict(kind="question", amount=None, products=r1, only=False)
+    reply = with_u({"purchases": [], "message": "The R1 options I could recommend are Demand Deposit Plus, 12-Month "
+                                                "Time Deposit and Daily Cash Wealth Product. Wealth products are not "
+                                                "deposits; principal can be lost."}, **u)
+    res, _ = run([reply], request="can you list all r1 options possible")
+    assert res.first_pass_ok and res.final.purchases == {}
