@@ -8,7 +8,7 @@ An AI wealth advisor whose advice cannot reach the client unless it passes a mac
 
 2026 Shenzhen FinTechathon · Topic B: Wealth Advisory Agent
 
-![tests](https://img.shields.io/badge/tests-224%20passing-0f7a55) ![license](https://img.shields.io/badge/license-MIT-0e1a33) ![model](https://img.shields.io/badge/AI-Qwen%203.5%209B%2C%20local-1f4bd8) ![chain](https://img.shields.io/badge/chain-FISCO%20BCOS%203.17-1f4bd8) ![solver](https://img.shields.io/badge/verifier-Z3%20SMT-1f4bd8)
+![tests](https://img.shields.io/badge/tests-226%20passing-0f7a55) ![license](https://img.shields.io/badge/license-MIT-0e1a33) ![model](https://img.shields.io/badge/AI-Qwen%203.5%209B%2C%20local-1f4bd8) ![chain](https://img.shields.io/badge/chain-FISCO%20BCOS%203.17-1f4bd8) ![solver](https://img.shields.io/badge/verifier-Z3%20SMT-1f4bd8)
 
 <br/>
 
@@ -65,7 +65,7 @@ flowchart LR
 | ~10,000 certificates anchored on FISCO BCOS | **1 transaction**, 0.5 s |
 | Regulator re-verifies all of them (signatures, chain, every rule) | **3.8 s** |
 | A rule changes overnight: re-check every past recommendation | **2.5 s** |
-| Automated tests (property-based, contract, gateway, API) | **224** |
+| Automated tests (property-based, contract, gateway, API) | **226** |
 
 All on one laptop (RTX 4060, 8 GB). Small test sets, honestly reported: wording checks are pattern-based and miss some paraphrases, but the allocation checks don't depend on wording, so the worst miss is misleading language, never an unsuitable product being bought.
 
@@ -126,7 +126,7 @@ The compliance sentinel is optional: build it with `training/` (see [`training/R
 
 ```bash
 cd backend
-uv run pytest -q                                             # 224 tests
+uv run pytest -q                                             # 226 tests
 uv run python evals/speech_heldout.py                        # wording checks on held-out messages
 uv run python evals/eval_advisor.py --model qwen3.5:9b       # red-team sessions against the live model
 uv run python evals/messy_language.py --url http://127.0.0.1:8078   # messy English/Chinese (use a separate data dir)
@@ -164,7 +164,7 @@ Plus: Ed25519-signed certificates with a signed scope, Merkle anchoring on FISCO
 backend/src/pca/   expr.py rule language · rules.py rule packs · verifier.py (evaluator + Z3) · speech.py wording checks
                    advisor.py agent loop · integrity.py · profile.py · certificate.py · anchor.py · gateway.py
                    ledger.py · service.py · api.py · sentinel.py · demo.py (offline model) · data/products.json
-backend/tests/     224 tests
+backend/tests/     226 tests
 backend/evals/     red-team, usefulness, held-out wording, messy-language and rehearsal evaluations
 web/               React + TypeScript UI (client app, bank oversight, regulator)
 contracts/         CertificateRegistry.sol (Merkle batches, regulator flags)

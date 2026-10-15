@@ -407,6 +407,15 @@ class Advisor:
 
         def over(a: Attempt) -> bool:
             return asked is not None and sum(a.purchases.values()) > asked * 1.02  # rounding slack only
+
+        # What the client literally asked for (named products, amount), if that alone is compliant for them.
+        named = intent_from_request(request, self.catalog, client)
+        named_ok = bool(named) and check(client, self.catalog, Proposal(client_id=client.id, purchases=named,
+                                                                        as_of=as_of), self.packs).ok
+        asked_named = False
+
+        def ignores_request(a: Attempt) -> bool:
+            return named_ok and not asked_named and not all(a.purchases.get(p) for p in named)
         for i in range(self.max_retries + 1):
             raw = self.llm.chat(messages, schema=PROPOSAL_SCHEMA)
             att = _evaluate("llm" if i == 0 else "llm-retry", raw, client, self.catalog, as_of, self.packs,
@@ -414,7 +423,9 @@ class Advisor:
             attempts.append(att)
             wrong_language = (language(request) == "zh" and language(att.message) != "zh" and not asked_language
                               and i < self.max_retries)
-            if att.ok and (att.purchases or not wants_to_invest) and not over(att) and not wrong_language:
+            skipped = ignores_request(att) and i < self.max_retries
+            if (att.ok and (att.purchases or not wants_to_invest) and not over(att) and not wrong_language
+                    and not skipped):
                 notify(att)
                 return AdvisorResult(att, attempts, blocked_requests=self._blocked(client, attempts, as_of))
             if att.ok and over(att):
@@ -425,6 +436,13 @@ class Advisor:
                             f"¥{sum(att.purchases.values()):,}. Keep the total at or below ¥{asked:,}. "
                             "Reply with JSON only.")
                 stop = i == self.max_retries
+            elif att.ok and skipped:
+                names = ", ".join(f"¥{amt:,} in {self.catalog[p].name}" for p, amt in named.items())
+                att.sent_back = f"The client asked for {names}, which is compliant for them, but the plan leaves it out."
+                asked_named = True
+                feedback = (f"The client explicitly asked for {names}. That is compliant for this client, so include "
+                            "it as asked unless a rule prevents it. Reply with JSON only.")
+                stop = False
             elif att.ok and wrong_language:
                 att.sent_back = "The client wrote in Chinese, but the reply is in English."
                 asked_language = True
@@ -447,7 +465,8 @@ class Advisor:
 
         # The model couldn't produce a useful compliant proposal: the solver takes over, starting from the
         # model's last allocation, else what the client named, else a sensible default for their amount.
-        base = (next((a.purchases for a in attempts if a.error is None and a.purchases), {})
+        base = ((named if named_ok else {})  # the client's own compliant request comes first
+                or next((a.purchases for a in attempts if a.error is None and a.purchases), {})
                 or intent or self._default_plan(client, request, as_of))
         if asked is not None and sum(base.values()) > asked:  # scale down to what the client asked for
             total = sum(base.values())

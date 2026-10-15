@@ -40,10 +40,10 @@ SCOPE = {
     "verified": "Every encoded rule in the listed rule packs holds for the recorded facts and purchases "
                 "(product risk vs client level, affordability, concentration, liquidity, horizon, private and "
                 "Southbound eligibility, and, at execution, disclosures, client confirmation and waiting periods).",
-    "pattern_checked": "The advisor's message was screened for guarantee promises, deposit confusion, performance "
-                       "figures not matching the catalogue, missing loss warnings, promotion of unsuitable or "
-                       "unchecked products, and coaching on the risk assessment. Screening is pattern-based: "
-                       "paraphrases can slip through.",
+    "pattern_checked": "The advisor's message (English or Chinese) was screened for guarantee promises, deposit "
+                       "confusion, performance figures, risk levels, product names or stated totals not matching the "
+                       "catalogue and the plan, missing loss warnings, promotion of unsuitable or unchecked products, "
+                       "and coaching on the risk assessment. Screening is pattern-based: paraphrases can slip through.",
     "not_checked": [
         "Whether the facts the client confirmed are true",
         "Whether the product data (ratings, fees, returns) is correct",

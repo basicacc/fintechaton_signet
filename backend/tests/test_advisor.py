@@ -209,3 +209,20 @@ def test_reply_language_detects_traditional_characters():
     assert reply_language("我想將五十萬放喺穩陣啲嘅地方") == "Chinese, Traditional characters"
     assert reply_language("我想把五十万放在稳一点的地方") == "Chinese, Simplified characters"
     assert reply_language("invest 50k please") == "English"
+
+
+def test_a_compliant_named_request_is_honoured():
+    asked = proposal({"CN-WM-FI90": 100_000})
+    other = proposal({"CN-BOND-GOV": 50_000, "CN-WM-CASH": 50_000})
+    llm = ScriptedLLM([other, asked])
+    res = Advisor(llm, CAT, CN).recommend(client(level=2), "Put 100k into Steady Income 90-Day please", NOW)
+    assert res.attempts[0].sent_back and "Steady Income 90-Day" in res.attempts[0].sent_back
+    assert res.final.purchases == {"CN-WM-FI90": 100_000}
+
+
+def test_solver_starts_from_the_clients_own_compliant_request():
+    other = proposal({"CN-BOND-GOV": 400_000})  # breaks the concentration cap every time
+    res, _ = run([other, other, other, {"message": "Here is a plan within your level. Returns are not "
+                                                   "guaranteed and you could lose part of your principal."}],
+                 level=2, request="Put 100k into Steady Income 90-Day please")
+    assert res.final.source == "solver-fix" and res.final.purchases == {"CN-WM-FI90": 100_000}
