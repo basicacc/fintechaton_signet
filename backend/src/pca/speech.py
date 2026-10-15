@@ -37,6 +37,9 @@ GUARANTEE_PATTERNS = [
     r"\b(?:risk[- ]free|no risk|zero risk|can(?:'|no)t lose|won'?t lose|never lose)\b",
     r"\bsafe as (?:a )?(?:bank )?deposits?\b",
     r"\bassured returns?\b",
+    r"\b(?:no|zero|without(?:\s+any)?)\s+(?:risk\s+of\s+)?(?:principal\s+)?loss(?:es)?(?:\s+risk)?\b",  # "zero principal loss risk"
+    r"\bprincipal\s+(?:is\s+)?(?:\w+\s+)?(?:protected|safe|secure)\b",  # "principal mostly protected"
+    r"\b(?:fully|completely|100%)\s+(?:safe|protected|secure)\b",
     r"保本",
     r"保收益",
     r"稳赚",
@@ -54,6 +57,7 @@ NEGATIONS = [
     r"\b(?:do|does|did|can|could|will|would|cannot|can't|won't|doesn't|don't)\s*(?:not\s+)?guarantee\w*(?:\s+(?:any|your|the))?(?:\s+principal(?:[- ]protection)?|\s+returns?)?",
     r"\bnot\s+(?:be\s+)?guarantee\w*",
     r"\bwithout\s+(?:any\s+)?guarantee\w*",
+    r"\b(?:not|never)\s+(?:be\s+)?(?:\w+\s+)?(?:protected|safe|secure|risk[- ]free)\b",
     r"\b(?:cannot|can't|won't|will not|do not|don't|never|must not|mustn't|should not|may not|not allowed to)\s+"
     r"(?:[\w-]+\s+){0,8}?(?:promise|promising|offer|provide|give|make|describe)\s+(?:you\s+)?(?:any\s+)?"
     r"(?:[\w-]+\s+){0,4}?guarantee\w*(?:\s+(?:returns?|outcomes?|principal(?:[- ]protection)?))?",
@@ -211,7 +215,12 @@ def check_coaching(text: str) -> list[SpeechIssue]:
 
 
 RECOMMEND_WORDS = (r"\b(?:suggest|recommend|propose|advise|consider|put|place|placing|allocat\w*|invest(?:ing)?\s+in|"
-                   r"buy|switch\s+to|instead)\b|建议|推荐|可以考虑|买入")
+                   r"buy|switch\s+to|instead|mix|includes?|including|go\s+with|opt\s+for)\b|建议|推荐|可以考虑|买入|组合|配置")
+
+
+_EARLIER_PLAN = re.compile(r"\b(?:your|the|my) (?:current|last|previous|earlier|existing|original) (?:plan|allocation|mix)\b|"
+                           r"\bI (?:picked|chose|selected|suggested|recommended|included)\b|\b(?:earlier|before|last time)\b|"
+                           r"之前|上次|刚才|剛才|原来的|原來的", re.I)
 
 
 def check_uncertified(text: str, catalog: dict[str, Product], level: int, recommended: set[str]) -> list[SpeechIssue]:
@@ -223,6 +232,8 @@ def check_uncertified(text: str, catalog: dict[str, Product], level: int, recomm
         if re.search(r"\b(?:not suitable|unsuitable|cannot|can'?t|not allowed|(?:will|would|do|does|did) not "
                      r"(?:suggest|recommend|propose)|won'?t (?:suggest|recommend|propose)|don'?t (?:suggest|recommend))\b"
                      r"|不适合|不適合|不能|不推荐|不推薦|不建议|不建議|无法推荐|無法推薦|高于您|高於您|超出您|超过您|超過您|未纳入|未納入|不纳入|不納入|不符合|不在.{0,6}范围|不宜|暂不|暫不", s, flags=re.I):
+            continue
+        if _EARLIER_PLAN.search(s):  # explaining advice already given (and certified) on an earlier turn
             continue
         for p in catalog.values():
             if p.effective_risk <= level and p.id not in recommended and _mentions(s, p):

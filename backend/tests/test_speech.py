@@ -133,6 +133,33 @@ def test_declining_to_suggest_is_not_an_uncertified_recommendation():
     assert "SP-UNCERT" not in ids(check_message(t, CAT, set(), level=2))
 
 
+
+@pytest.mark.parametrize("text,flagged", [
+    ("Daily Cash Wealth Product offers zero principal loss risk.", True),
+    ("These offer stability with no principal loss risk.", True),
+    ("Steady Income 90-Day has no risk of loss.", True),
+    ("It keeps your principal mostly protected.", True),
+    ("Your money is fully protected in this fund.", True),
+    ("This fund is not principal-protected and you could lose money.", False),
+    ("Wealth products are not protected like deposits; principal can be lost.", False),
+    ("Demand Deposit Plus has zero principal loss risk.", False),  # a real deposit
+])
+def test_no_loss_claims_are_guarantees(text, flagged):
+    assert ("SP-GUAR" in ids(check_guarantees(text, CAT))) is flagged, text
+
+
+def test_a_suggested_mix_must_be_the_plan():
+    # the advisor named three products as "a safer mix" but certified an empty plan
+    t = ("For your ¥800,000 and C2 tolerance, a safer mix includes Daily Cash Wealth Product (R1) and China "
+         "Government Bond Index Fund (R2). Principal can be lost.")
+    assert "SP-UNCERT" in ids(check_message(t, CAT, set(), level=2))
+
+
+def test_explaining_an_earlier_plan_is_not_a_new_recommendation():
+    t = ("Your previous plan includes China Government Bond Index Fund (R2) because it suits a C2 client. "
+         "Principal can be lost.")
+    assert "SP-UNCERT" not in ids(check_message(t, CAT, set(), level=2))
+
 @pytest.mark.parametrize("text,flagged", [
     ("该产品不保本，本金可能亏损", False), ("这个产品保本保收益", True), ("不承诺保本", False),
     ("保证每年5%", True), ("无法保证收益", False), ("不能保证翻倍", False), ("我们不保证任何收益", False),

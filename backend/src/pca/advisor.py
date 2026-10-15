@@ -57,7 +57,16 @@ Amounts in whole thousands. Write the message in the client's language (English 
 Traditional characters if the client uses them). Refer to products by name: the English name in \
 English replies, name_zh in Chinese replies, never by ID and never mixing two products' names, and state each product's risk level exactly as in the catalogue. Clients often write \
 informally, with typos, pinyin, slang or long run-on sentences: work out what they mean. \
-under 120 words. Reply with JSON only."""
+Sound like a friendly, plain-spoken human advisor, not a legal notice: no "I cannot recommend", no \
+"Please confirm if you wish to proceed", no repeating the conversation back. Only mention a limit when \
+the client actually asked for something that isn't allowed, and then say briefly why and what they can \
+do instead. If the client asks a question (why, what is, how), answer it; you may leave purchases empty. \
+When the client wants to invest, put the plan in purchases now; you may end with one short question \
+(access to the money, steadier value, a bit more growth?), but never ask instead of proposing. If the \
+client doesn't like a plan or asks for something else, propose a genuinely different suitable plan. \
+Every product you suggest in the message must be in purchases. Don't recite the bank's internal limits \
+(like the 30% rule) to the client; just follow them. State the loss warning once, in one \
+short sentence. Keep the message under 120 words. Reply with JSON only."""
 
 
 @dataclass
@@ -144,9 +153,13 @@ def history_block(history: Sequence[dict], catalog: dict[str, Product]) -> str:
         plan = turn.get("plan") or {}
         plan_txt = "; ".join(f"{catalog[p].name if p in catalog else p} ¥{a:,}" for p, a in plan.items())
         lines.append(f"Advisor: {turn['advisor']}" + (f" [Verified plan: {plan_txt}]" if plan_txt else ""))
-    return ("Conversation so far (exactly what the client saw):\n" + "\n".join(lines) + "\n\n"
-            "Read the new request in the context of this conversation: a follow-up like 'make it safer' refers "
-            "to the last verified plan.\n\n")
+    last = next((t.get("plan") for t in reversed(list(history)) if t.get("plan")), None)
+    latest = ("The client's current plan (the latest one they were shown): "
+              + "; ".join(f"{catalog[p].name if p in catalog else p} (R{catalog[p].effective_risk if p in catalog else '?'}) "
+                          f"¥{a:,}" for p, a in last.items()) + ".\n") if last else ""
+    return ("Conversation so far (exactly what the client saw):\n" + "\n".join(lines) + "\n\n" + latest +
+            "Read the new request in the context of this conversation: 'make it safer', 'why those?' or "
+            "'something else' refer to the current plan.\n\n")
 
 
 def _proposal_prompt(client: Client, catalog: dict[str, Product], request: str,
@@ -155,6 +168,9 @@ def _proposal_prompt(client: Client, catalog: dict[str, Product], request: str,
             f"Catalogue (fictional demo products):\n{json.dumps(catalogue_table(catalog), ensure_ascii=False)}\n\n"
             f"{history_block(history, catalog)}"
             f"Client request:\n{request}\n\n"
+            + (f"Amount to invest: ¥{amt:,} (from earlier in the conversation).\n"
+               if (amt := conversation_amount(request, history)) is not None and requested_amount(request) is None
+               else "") +
             f"Write the message in {reply_language(request)}.\n"
             'Reply as JSON: {"purchases": [{"product_id": ..., "amount": ...}], "message": ...}')
     return [{"role": "system", "content": SYSTEM}, {"role": "user", "content": user}]
@@ -163,6 +179,31 @@ def _proposal_prompt(client: Client, catalog: dict[str, Product], request: str,
 _FOLLOW_UP = re.compile(r"\b(?:safer|less risky|lower risk|riskier|more risk|smaller|bigger|instead|adjust|switch|"
                         r"swap|replace|remove|increase|reduce|rebalance|make it|that plan|this plan|the plan)\b|"
                         r"换|调整|少一点|多一点|更安全|降低|增加|减少", re.I)
+
+
+# The client wants a different plan, without naming an amount or a product ("what else?", "didn't like these")
+_ALTERNATIVE = re.compile(r"\b(?:else|other|another|alternatives?|different|better|options?|instead)\b|"
+                          r"\b(?:did ?n[o']?t|do ?n[o']?t|not) (?:like|want|love)\b|"
+                          r"其他|其它|别的|別的|换一个|換一個|不喜欢|不喜歡|更好|还有什么|還有什麼", re.I)
+
+
+def wants_alternative(request: str, history: Sequence[dict]) -> bool:
+    """After a delivered plan, a request for something different still wants a plan, not just words."""
+    return any(t.get("plan") for t in history) and bool(_ALTERNATIVE.search(request))
+
+
+def conversation_amount(request: str, history: Sequence[dict]) -> int | None:
+    """The amount to invest: named in this message, else (for a follow-up or a request for alternatives) the
+    one the client named earlier in the conversation, else the total of the plan they were last given."""
+    if (asked := requested_amount(request)) is not None:
+        return asked
+    if not (follow_up_base(request, history) or wants_alternative(request, history)):
+        return None
+    for t in reversed(list(history)):
+        if (earlier := requested_amount(t.get("client", ""))) is not None:
+            return earlier
+    last = next((t["plan"] for t in reversed(list(history)) if t.get("plan")), None)
+    return sum(last.values()) if last else None
 
 
 def follow_up_base(request: str, history: Sequence[dict]) -> dict[str, int]:
@@ -191,8 +232,10 @@ def _level(client: Client) -> int:
 
 
 def _evaluate(source: str, raw: str, client: Client, catalog: dict[str, Product], as_of: datetime,
-              packs: Sequence[RulePack], sentinel=None) -> Attempt:
-    """``sentinel`` (optional) adds model-based speech findings for LLM-written text."""
+              packs: Sequence[RulePack], sentinel=None, earlier: frozenset[str] = frozenset()) -> Attempt:
+    """``sentinel`` (optional) adds model-based speech findings for LLM-written text. ``earlier``: the plan
+    the client was already given (and certified) on a previous turn; a reply that proposes nothing new may
+    discuss those products, e.g. to answer "why did you pick those?"."""
     try:
         data = parse_json(raw)
         purchases: dict[str, int] = {}
@@ -208,7 +251,8 @@ def _evaluate(source: str, raw: str, client: Client, catalog: dict[str, Product]
         return Attempt(source, purchases, message, [], [], error=f"unknown product ids {unknown}")
     level = _level(client)
     result = check(client, catalog, Proposal(client_id=client.id, purchases=purchases, as_of=as_of), packs)
-    speech = check_message(message, catalog, set(purchases), level, purchases)
+    discussed = set(purchases) if purchases else set(earlier)
+    speech = check_message(message, catalog, discussed, level, purchases)
     if sentinel is not None and message:
         seen = {x.rule_id for x in speech}
         speech += [x for x in sentinel.claims(message) if x.rule_id not in seen]
@@ -397,9 +441,11 @@ class Advisor:
         notify = on_attempt or (lambda _a: None)
         messages = _proposal_prompt(client, self.catalog, request, history)
         attempts: list[Attempt] = []
+        last_plan = next((dict(t["plan"]) for t in reversed(list(history)) if t.get("plan")), {})
         intent = intent_from_request(request, self.catalog, client) or follow_up_base(request, history)
-        asked = requested_amount(request)
-        wants_to_invest = bool(intent) or asked is not None
+        asked = conversation_amount(request, history)
+        alternative = wants_alternative(request, history)
+        wants_to_invest = bool(intent) or asked is not None or alternative
         if asked is not None and asked > client.investable_assets:
             asked = None  # can't be met anyway; the rules decide how much is possible
         nudged = False
@@ -419,13 +465,15 @@ class Advisor:
         for i in range(self.max_retries + 1):
             raw = self.llm.chat(messages, schema=PROPOSAL_SCHEMA)
             att = _evaluate("llm" if i == 0 else "llm-retry", raw, client, self.catalog, as_of, self.packs,
-                            self.sentinel)
+                            self.sentinel, frozenset(last_plan))
             attempts.append(att)
             wrong_language = (language(request) == "zh" and language(att.message) != "zh" and not asked_language
                               and i < self.max_retries)
             skipped = ignores_request(att) and i < self.max_retries
+            same_again = (alternative and att.ok and att.purchases and att.purchases == last_plan
+                          and i < self.max_retries)
             if (att.ok and (att.purchases or not wants_to_invest) and not over(att) and not wrong_language
-                    and not skipped):
+                    and not skipped and not same_again):
                 notify(att)
                 return AdvisorResult(att, attempts, blocked_requests=self._blocked(client, attempts, as_of))
             if att.ok and over(att):
@@ -436,6 +484,12 @@ class Advisor:
                             f"¥{sum(att.purchases.values()):,}. Keep the total at or below ¥{asked:,}. "
                             "Reply with JSON only.")
                 stop = i == self.max_retries
+            elif att.ok and same_again:
+                att.sent_back = "The client asked for something different, but this is the plan they just turned down."
+                feedback = ("This is the same plan the client just said they didn't like. Propose a genuinely "
+                            "different suitable plan (other products or a clearly different balance), for the "
+                            "same amount. Reply with JSON only.")
+                stop = False
             elif att.ok and skipped:
                 names = ", ".join(f"¥{amt:,} in {self.catalog[p].name}" for p, amt in named.items())
                 att.sent_back = f"The client asked for {names}, which is compliant for them, but the plan leaves it out."
@@ -467,13 +521,16 @@ class Advisor:
         # model's last allocation, else what the client named, else a sensible default for their amount.
         base = ((named if named_ok else {})  # the client's own compliant request comes first
                 or next((a.purchases for a in attempts if a.error is None and a.purchases), {})
-                or intent or self._default_plan(client, request, as_of))
+                or intent
+                or (last_plan if not wants_to_invest else {})  # a question about their plan: re-check and explain it
+                or self._default_plan(client, request, as_of))
         if asked is not None and sum(base.values()) > asked:  # scale down to what the client asked for
             total = sum(base.values())
             base = {p: a * asked // total for p, a in base.items()}
         fix = minimal_fix(client, self.catalog, Proposal(client_id=client.id, purchases=base, as_of=as_of), self.packs)
         purchases = fix.purchases if fix else {}
-        blocked = {v.product_id: v.message for a in attempts for v in a.violations if v.product_id}
+        blocked = {v.product_id: v.message for a in attempts for v in a.violations
+                   if v.product_id and v.product_id not in purchases}
         for pid in intent_from_request(request, self.catalog, client):
             if pid not in purchases and pid not in blocked:
                 why = check(client, self.catalog, Proposal(client_id=client.id, purchases={pid: 1}, as_of=as_of),

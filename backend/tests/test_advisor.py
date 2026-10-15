@@ -226,3 +226,72 @@ def test_solver_starts_from_the_clients_own_compliant_request():
                                                    "guaranteed and you could lose part of your principal."}],
                  level=2, request="Put 100k into Steady Income 90-Day please")
     assert res.final.source == "solver-fix" and res.final.purchases == {"CN-WM-FI90": 100_000}
+
+
+def test_asking_for_something_different_still_wants_a_plan():
+    from pca.advisor import wants_alternative
+    h = [{"client": "x", "advisor": "y", "plan": {"CN-WM-CASH": 100_000}}]
+    for ask in ("i didnt like these maybe better choice", "what else would you suggest", "any other options?",
+                "不喜欢这个，换一个吧"):
+        assert wants_alternative(ask, h), ask
+    assert not wants_alternative("Why did you pick those?", h)
+    assert not wants_alternative("what else would you suggest", [])  # nothing to be different from yet
+
+
+def test_words_only_reply_to_a_request_for_alternatives_is_sent_back():
+    # the reply that prompted this: products named in the text, nothing in the plan
+    words = {"purchases": [], "message": "Understood. Something different could suit you. Returns are not "
+                                         "guaranteed and principal can be lost."}
+    llm = ScriptedLLM([words, proposal({"CN-BOND-GOV": 80_000, "CN-WM-FI90": 60_000})])
+    h = [{"client": "Invest 200k", "advisor": "Daily Cash Wealth Product", "plan": {"CN-WM-CASH": 200_000}}]
+    res = Advisor(llm, CAT, CN).recommend(client(level=2), "i didnt like these maybe better choice", NOW, history=h)
+    assert res.attempts[0].sent_back and res.final.purchases and res.final.ok
+
+
+def test_explaining_the_plan_already_given_is_not_an_uncertified_recommendation():
+    explain = {"purchases": [], "message": "China Government Bond Index Fund (R2) suits your C2 level and "
+                                           "your horizon. Principal can be lost."}
+    llm = ScriptedLLM([explain])
+    h = [{"client": "Invest 100k", "advisor": "…", "plan": {"CN-BOND-GOV": 100_000}}]
+    res = Advisor(llm, CAT, CN).recommend(client(level=2), "Why did you pick those?", NOW, history=h)
+    assert res.first_pass_ok and res.final.purchases == {}
+
+
+def test_amount_named_earlier_carries_over_to_follow_ups():
+    from pca.advisor import conversation_amount
+    h = [{"client": "I have 200k to invest for 3 years", "advisor": "…", "plan": {"CN-WM-CASH": 200_000}}]
+    assert conversation_amount("what else would you suggest", h) == 200_000
+    assert conversation_amount("make it safer", h) == 200_000
+    assert conversation_amount("actually invest 300k", h) == 300_000  # a new amount wins
+    assert conversation_amount("Why did you pick those?", h) is None  # a question, not a new plan
+    h2 = [{"client": "help me invest", "advisor": "…", "plan": {"CN-WM-CASH": 90_000, "CN-WM-FI90": 60_000}}]
+    assert conversation_amount("any other options?", h2) == 150_000  # no amount ever named: the last plan's total
+
+
+def test_follow_up_plan_is_held_to_the_amount_from_earlier():
+    big = proposal({"CN-WM-CASH": 400_000})  # compliant, but twice what the client said
+    llm = ScriptedLLM([big, proposal({"CN-WM-CASH": 100_000, "CN-BOND-GOV": 60_000})])
+    h = [{"client": "I have 200k to invest", "advisor": "…", "plan": {"CN-DEP-01": 200_000}}]
+    res = Advisor(llm, CAT, CN).recommend(client(level=2), "what else would you suggest", NOW, history=h)
+    assert "asked for ¥200,000" in res.attempts[0].sent_back
+    assert sum(res.final.purchases.values()) <= 200_000
+    assert "Amount to invest: ¥200,000" in llm.calls[0][-1]["content"]
+
+
+def test_a_different_plan_must_actually_be_different():
+    same = proposal({"CN-DEP-01": 50_000, "CN-WM-CASH": 80_000, "CN-BOND-GOV": 70_000})
+    other = proposal({"CN-WM-FI90": 60_000, "CN-WM-CASH": 80_000, "CN-BOND-GOV": 60_000})
+    llm = ScriptedLLM([same, other])
+    h = [{"client": "I have 200k", "advisor": "…", "plan": {"CN-DEP-01": 50_000, "CN-WM-CASH": 80_000,
+                                                           "CN-BOND-GOV": 70_000}}]
+    res = Advisor(llm, CAT, CN).recommend(client(level=2), "i didnt like these maybe better choice", NOW, history=h)
+    assert "just turned down" in res.attempts[0].sent_back
+    assert res.final.purchases != h[0]["plan"] and res.final.ok
+
+
+def test_history_names_the_current_plan_with_risk_levels():
+    from pca.advisor import history_block
+    h = [{"client": "a", "advisor": "b", "plan": {"CN-WM-FI90": 100_000}},
+         {"client": "make it safer", "advisor": "c", "plan": {"CN-DEP-12M": 100_000}}]
+    block = history_block(h, CAT)
+    assert "current plan" in block and f"{CAT['CN-DEP-12M'].name} (R{CAT['CN-DEP-12M'].effective_risk})" in block
