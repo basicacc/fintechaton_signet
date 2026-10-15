@@ -1,0 +1,8 @@
+# Compliance sentinel: Qwen3.5-2B + LoRA (bf16), exported to GGUF.
+# Same renderer/parser as the official qwen3.5 models, so the chat template matches training.
+FROM __GGUF__
+RENDERER qwen3.5
+PARSER qwen3.5
+PARAMETER temperature 0
+PARAMETER num_ctx 2048
+LICENSE """Apache-2.0. Derivative of Qwen/Qwen3.5-2B (Apache-2.0, Alibaba Qwen team). See THIRD_PARTY_NOTICES.md."""

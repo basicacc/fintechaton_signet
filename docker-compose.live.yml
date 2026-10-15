@@ -1,0 +1,12 @@
+# Live mode: use the host's Ollama (Qwen 3.5 9B + sentinel) and FISCO BCOS node.
+#   ./scripts/chain.sh start
+#   docker compose -f docker-compose.yml -f docker-compose.live.yml up --build
+# Host networking so the container reaches Ollama (11434) and the chain RPC (8545) on localhost.
+services:
+  signet:
+    network_mode: host
+    ports: !reset []
+    environment:
+      PCA_LLM: ollama
+      OLLAMA_HOST: http://127.0.0.1:11434
+      PCA_CHAIN_URL: http://127.0.0.1:8545

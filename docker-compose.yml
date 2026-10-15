@@ -1,0 +1,20 @@
+# Offline demo: no GPU, no Ollama, no blockchain needed.
+#   docker compose up --build      then open http://localhost:8077
+# A scripted stand-in plays the AI and certificates are anchored on an in-process EVM.
+# The UI labels this "Offline demo mode". Everything else (verifier, Z3 solver, signed
+# certificates, execution gateway, evidence ledger, regulator tools) is the real code.
+name: signet
+services:
+  signet:
+    build: .
+    image: signet:latest
+    ports:
+      - "${SIGNET_PORT:-8077}:8077"
+    environment:
+      PCA_LLM: scripted
+    volumes:
+      - signet-data:/data
+    restart: unless-stopped
+
+volumes:
+  signet-data:

@@ -1,0 +1,14 @@
+[project]
+name = "pca-finetune"
+version = "0.1.0"
+requires-python = ">=3.12,<3.13"
+dependencies = [
+  "unsloth",
+  "unsloth_zoo",
+  "transformers>=5",
+  "torchvision",
+  "pillow",
+  "datasets",
+  "trl",
+  "peft",
+]

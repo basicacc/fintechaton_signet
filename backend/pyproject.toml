@@ -1,0 +1,33 @@
+[project]
+name = "pca"
+version = "0.1.0"
+description = "Signet: an AI wealth advisor whose advice must pass a machine-checked compliance certificate"
+authors = [
+    { name = "basicacc", email = "173631767+basicacc@users.noreply.github.com" }
+]
+requires-python = ">=3.12"
+dependencies = [
+    "cryptography>=42",
+    "fastapi>=0.115",
+    "httpx>=0.27",
+    "py-solc-x>=2",
+    "pydantic>=2.7",
+    "uvicorn>=0.30",
+    "web3>=7",
+    "z3-solver>=4.13",
+]
+
+[build-system]
+requires = ["uv_build>=0.12.23,<0.13.0"]
+build-backend = "uv_build"
+
+[dependency-groups]
+dev = [
+    "eth-tester[py-evm]>=0.12",
+    "hypothesis>=6.169.1",
+    "pytest>=9.1.1",
+]
+
+[tool.pytest.ini_options]
+pythonpath = ["tests"]
+testpaths = ["tests"]

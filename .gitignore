@@ -1,0 +1,38 @@
+# python / node
+__pycache__/
+*.pyc
+.venv/
+.pytest_cache/
+.hypothesis/
+node_modules/
+dist/
+
+# secrets and local state: never commit
+.env
+*.key
+backend/data/
+backend/data*/
+
+# build output (the backend serves the built UI)
+backend/src/pca/static/
+
+# local chain
+chain/
+
+# sentinel training artifacts
+training/ft/out/
+training/ft/unsloth_compiled_cache/
+training/ft/llama.cpp/
+training/ft/*.log
+training/ft/Modelfile*
+!training/ft/Modelfile.in
+
+# generated results and local-only material (kept on disk, not published)
+training/data/
+training/results/
+backend/evals/results/
+tools/
+submission/
+videos/
+shots/
+competition.pdf

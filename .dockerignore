@@ -1,0 +1,16 @@
+**/node_modules
+**/.venv
+**/__pycache__
+**/.pytest_cache
+**/.hypothesis
+backend/data
+backend/data*
+backend/src/pca/static
+backend/evals
+chain
+training
+tools
+videos
+shots
+competition.pdf
+.git
