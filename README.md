@@ -8,7 +8,13 @@ An AI wealth advisor whose advice cannot reach the client unless it passes a mac
 
 2026 Shenzhen FinTechathon · Topic B: Wealth Advisory Agent
 
-![tests](https://img.shields.io/badge/tests-224%20passing-0f7a55) ![model](https://img.shields.io/badge/AI-Qwen%203.5%209B%2C%20local-1f4bd8) ![chain](https://img.shields.io/badge/chain-FISCO%20BCOS%203.17-1f4bd8) ![solver](https://img.shields.io/badge/verifier-Z3%20SMT-1f4bd8)
+![tests](https://img.shields.io/badge/tests-224%20passing-0f7a55) ![license](https://img.shields.io/badge/license-MIT-0e1a33) ![model](https://img.shields.io/badge/AI-Qwen%203.5%209B%2C%20local-1f4bd8) ![chain](https://img.shields.io/badge/chain-FISCO%20BCOS%203.17-1f4bd8) ![solver](https://img.shields.io/badge/verifier-Z3%20SMT-1f4bd8)
+
+<br/>
+
+<a href="https://drive.google.com/file/d/1hAncsGbYns415KXh2TCWybDhMQ5k-xdj/view?usp=sharing"><img src="assets/demo-preview.gif" alt="Signet demo: a draft is stopped by the verifier, a compliant one gets a signed certificate anchored on FISCO BCOS. Click to watch the full video." width="820"/></a>
+
+**[▶ Watch the full demo (3:52, with voice-over)](https://drive.google.com/file/d/1hAncsGbYns415KXh2TCWybDhMQ5k-xdj/view?usp=sharing)**
 
 </div>
 
@@ -170,4 +176,8 @@ training/          compliance sentinel: data generation, LoRA fine-tuning, evalu
 
 ## Notes
 
-The products, returns and clients are **fictional**, and this is not financial advice. Third-party components and licences are listed in [`THIRD_PARTY_NOTICES.md`](THIRD_PARTY_NOTICES.md).
+The products, returns and clients are **fictional**, and this is not financial advice.
+
+## License
+
+[MIT](LICENSE). Third-party components and their licences are listed in [`THIRD_PARTY_NOTICES.md`](THIRD_PARTY_NOTICES.md).
