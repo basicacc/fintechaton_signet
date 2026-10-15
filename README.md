@@ -12,9 +12,9 @@ An AI wealth advisor whose advice cannot reach the client unless it passes a mac
 
 <br/>
 
-<a href="https://drive.google.com/file/d/1hAncsGbYns415KXh2TCWybDhMQ5k-xdj/view?usp=sharing"><img src="assets/demo-preview.gif" alt="Signet demo: a draft is stopped by the verifier, a compliant one gets a signed certificate anchored on FISCO BCOS. Click to watch the full video." width="820"/></a>
+<a href="https://drive.google.com/file/d/1vg-Ea1Elnax_JpdPqkeC9_-G8iC2SdKy/view?usp=sharing"><img src="assets/demo-preview.gif" alt="Signet demo: a draft is stopped by the verifier, a compliant one gets a signed certificate anchored on FISCO BCOS. Click to watch the full video." width="820"/></a>
 
-**[▶ Watch the full demo (3:52, with voice-over)](https://drive.google.com/file/d/1hAncsGbYns415KXh2TCWybDhMQ5k-xdj/view?usp=sharing)**
+**[▶ Watch the full demo (3:56, with voice-over)](https://drive.google.com/file/d/1vg-Ea1Elnax_JpdPqkeC9_-G8iC2SdKy/view?usp=sharing)**
 
 </div>
 
